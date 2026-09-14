@@ -1,26 +1,19 @@
 package com.alejandro.musicplayer
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,8 +24,30 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MusicPlayerScreen() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val player = remember { ExoPlayer.Builder(context).build() }
+    var selectedName by remember { mutableStateOf("Ninguna canción seleccionada") }
     var isPlaying by remember { mutableStateOf(false) }
-    var progress by remember { mutableFloatStateOf(0f) }
+
+    DisposableEffect(Unit) {
+        onDispose { player.release() }
+    }
+
+    val picker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            context.contentResolver.takePersistableUriPermission(
+                it,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            selectedName = it.lastPathSegment?.substringAfterLast('/') ?: "Canción seleccionada"
+            player.setMediaItem(MediaItem.fromUri(it))
+            player.prepare()
+            player.play()
+            isPlaying = true
+        }
+    }
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -44,29 +59,40 @@ fun MusicPlayerScreen() {
                 Text("🎵", style = MaterialTheme.typography.displayLarge)
                 Spacer(Modifier.height(20.dp))
                 Text("Mi Música", style = MaterialTheme.typography.headlineMedium)
-                Text(
-                    if (isPlaying) "Reproduciendo" else "Listo para reproducir",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Spacer(Modifier.height(8.dp))
+                Text(selectedName, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(28.dp))
-                Slider(
-                    value = progress,
-                    onValueChange = { progress = it },
-                    modifier = Modifier.fillMaxWidth()
-                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { }) { Text("⏮", style = MaterialTheme.typography.headlineMedium) }
-                    Button(onClick = { isPlaying = !isPlaying }) {
+                    IconButton(onClick = { player.seekToPreviousMediaItem() }) {
+                        Text("⏮", style = MaterialTheme.typography.headlineMedium)
+                    }
+                    Button(onClick = {
+                        if (player.isPlaying) {
+                            player.pause()
+                            isPlaying = false
+                        } else {
+                            player.play()
+                            isPlaying = true
+                        }
+                    }) {
                         Text(if (isPlaying) "Pausa" else "Reproducir")
                     }
-                    IconButton(onClick = { }) { Text("⏭", style = MaterialTheme.typography.headlineMedium) }
+                    IconButton(onClick = { player.seekToNextMediaItem() }) {
+                        Text("⏭", style = MaterialTheme.typography.headlineMedium)
+                    }
                 }
+
                 Spacer(Modifier.height(24.dp))
-                Button(onClick = { }) { Text("Elegir canción") }
+                Button(onClick = {
+                    picker.launch(arrayOf("audio/*"))
+                }) {
+                    Text("Elegir canción")
+                }
             }
         }
     }
